@@ -27,6 +27,13 @@ jobs:
       - name: Build image
         run: docker build -t $IMAGE_NAME:$VERSION .
 
+      - name: Run container test
+        run: |
+          docker run -d -p 5000:5000 --name test-container $IMAGE_NAME:$VERSION
+          sleep 5
+          docker ps
+          docker stop test-container
+
       - name: Push image
         run: docker push $IMAGE_NAME:$VERSION
 
