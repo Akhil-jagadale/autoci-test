@@ -1,3 +1,4 @@
+
 name: AutoCI Pipeline
 
 on:
@@ -7,12 +8,8 @@ on:
       - master
 
 jobs:
-  build-test-push:
+  build-and-push:
     runs-on: ubuntu-latest
-
-    env:
-      IMAGE_NAME: akhileshj/autoci-app
-      VERSION: v${{ github.run_number }}
 
     steps:
       - name: Checkout
@@ -24,47 +21,8 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Get previous stable image
-        run: docker pull $IMAGE_NAME:latest || true
+      - name: Build image
+        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/autoci-app:1775584972 .
 
-      - name: Build new version
-        run: docker build -t $IMAGE_NAME:$VERSION .
-
-      - name: Run container test
-        id: test
-        run: |
-          docker rm -f test-container || true
-
-          docker run -d -p 5000:5000 --name test-container $IMAGE_NAME:$VERSION
-
-          echo "Waiting for app to start..."
-          sleep 12
-
-          echo "Running health check..."
-          curl --fail http://localhost:5000 || (
-            echo "Health check failed"
-            docker logs test-container
-            exit 1
-          )
-
-          echo "Health check passed"
-
-          docker stop test-container
-          docker rm test-container
-
-      - name: Push version image
-        if: success()
-        run: docker push $IMAGE_NAME:$VERSION
-
-      - name: Update latest tag
-        if: success()
-        run: |
-          docker tag $IMAGE_NAME:$VERSION $IMAGE_NAME:latest
-          docker push $IMAGE_NAME:latest
-
-      - name: Rollback to previous stable
-        if: failure()
-        run: |
-          echo "Rolling back to previous stable version"
-          docker rm -f rollback-container || true
-          docker run -d -p 5000:5000 --name rollback-container $IMAGE_NAME:latest
+      - name: Push image
+        run: docker push ${{ secrets.DOCKER_USERNAME }}/autoci-app:1775584972
