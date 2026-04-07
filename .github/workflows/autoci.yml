@@ -24,48 +24,47 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # Pull last stable version
       - name: Get previous stable image
-        run: |
-          echo "Pulling previous stable image"
-          docker pull $IMAGE_NAME:latest || true
+        run: docker pull $IMAGE_NAME:latest || true
 
-      # Build new version
       - name: Build new version
         run: docker build -t $IMAGE_NAME:$VERSION .
 
-      # Run smoke test
       - name: Run container test
         id: test
         run: |
+          docker rm -f test-container || true
+
           docker run -d -p 5000:5000 --name test-container $IMAGE_NAME:$VERSION
-          sleep 8
 
-          if docker ps | grep test-container; then
-            echo "New version healthy"
-            docker stop test-container
-            docker rm test-container
-          else
-            echo "New version failed"
+          echo "Waiting for app to start..."
+          sleep 12
+
+          echo "Running health check..."
+          curl --fail http://localhost:5000 || (
+            echo "Health check failed"
+            docker logs test-container
             exit 1
-          fi
+          )
 
-      # Push only if success
+          echo "Health check passed"
+
+          docker stop test-container
+          docker rm test-container
+
       - name: Push version image
         if: success()
         run: docker push $IMAGE_NAME:$VERSION
 
-      # Update latest only if success
       - name: Update latest tag
         if: success()
         run: |
           docker tag $IMAGE_NAME:$VERSION $IMAGE_NAME:latest
           docker push $IMAGE_NAME:latest
 
-      # Rollback if failure
       - name: Rollback to previous stable
         if: failure()
         run: |
-         echo "Rolling back to previous stable version"
-         docker rm -f test-container || true
-         docker run -d -p 5000:5000 --name rollback-container $IMAGE_NAME:latest
+          echo "Rolling back to previous stable version"
+          docker rm -f rollback-container || true
+          docker run -d -p 5000:5000 --name rollback-container $IMAGE_NAME:latest
