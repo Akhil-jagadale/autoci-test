@@ -1,4 +1,3 @@
-
 name: AutoCI Pipeline
 
 on:
@@ -11,6 +10,10 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
 
+    env:
+      IMAGE_NAME: akhileshj/autoci-app
+      VERSION: v${{ github.run_number }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -22,7 +25,12 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build image
-        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/autoci-app:1775544613 .
+        run: docker build -t $IMAGE_NAME:$VERSION .
 
       - name: Push image
-        run: docker push ${{ secrets.DOCKER_USERNAME }}/autoci-app:1775544613
+        run: docker push $IMAGE_NAME:$VERSION
+
+      - name: Tag latest
+        run: |
+          docker tag $IMAGE_NAME:$VERSION $IMAGE_NAME:latest
+          docker push $IMAGE_NAME:latest
