@@ -89,7 +89,30 @@ jobs:
                 --restart always \
                 $IMAGE_NAME:$VERSION
 
-              echo "Deployment successful"
+              echo "Monitoring container for crash..."
+              sleep 15
+
+              RUNNING=$(docker inspect -f '{{.State.Running}}' $CONTAINER_NAME)
+
+              if [ "$RUNNING" != "true" ]; then
+                echo "Container crashed — rolling back"
+
+                docker rm -f $CONTAINER_NAME || true
+
+                if [ ! -z "$PREVIOUS_IMAGE" ]; then
+                  docker run -d \
+                    --name $CONTAINER_NAME \
+                    -p 80:5000 \
+                    --restart always \
+                    $PREVIOUS_IMAGE
+
+                  echo "Rollback after crash complete"
+                fi
+
+                exit 1
+              fi
+
+              echo "Deployment successful and stable"
 
             else
 
@@ -99,8 +122,6 @@ jobs:
               docker rm $NEW_CONTAINER || true
 
               if [ ! -z "$PREVIOUS_IMAGE" ]; then
-                echo "Restoring previous version: $PREVIOUS_IMAGE"
-
                 docker stop $CONTAINER_NAME || true
                 docker rm $CONTAINER_NAME || true
 
