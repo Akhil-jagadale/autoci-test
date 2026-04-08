@@ -10,6 +10,7 @@ env:
   IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/autoci-app
   CONTAINER_NAME: autoci-app
   NEW_CONTAINER: autoci-app-new
+  VERSION: v${{ github.run_number }}
 
 jobs:
   build-test-push-deploy:
@@ -18,9 +19,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set version
-        run: echo "VERSION=1775646302" >> $GITHUB_ENV
 
       - name: Login to DockerHub
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
@@ -60,11 +58,7 @@ jobs:
 
             docker pull $IMAGE_NAME:$VERSION
 
-            docker run -d \
-              --name $NEW_CONTAINER \
-              -p 8080:5000 \
-              --restart always \
-              $IMAGE_NAME:$VERSION
+            docker run -d               --name $NEW_CONTAINER               -p 8080:5000               --restart always               $IMAGE_NAME:$VERSION
 
             sleep 8
 
@@ -76,11 +70,7 @@ jobs:
               docker stop $NEW_CONTAINER
               docker rm $NEW_CONTAINER
 
-              docker run -d \
-                --name $CONTAINER_NAME \
-                -p 80:5000 \
-                --restart always \
-                $IMAGE_NAME:$VERSION
+              docker run -d                 --name $CONTAINER_NAME                 -p 80:5000                 --restart always                 $IMAGE_NAME:$VERSION
 
               sleep 15
 
@@ -90,11 +80,7 @@ jobs:
                 docker rm -f $CONTAINER_NAME || true
 
                 if [ ! -z "$PREVIOUS_IMAGE" ]; then
-                  docker run -d \
-                    --name $CONTAINER_NAME \
-                    -p 80:5000 \
-                    --restart always \
-                    $PREVIOUS_IMAGE
+                  docker run -d                     --name $CONTAINER_NAME                     -p 80:5000                     --restart always                     $PREVIOUS_IMAGE
                 fi
 
                 exit 1
@@ -109,11 +95,7 @@ jobs:
                 docker stop $CONTAINER_NAME || true
                 docker rm $CONTAINER_NAME || true
 
-                docker run -d \
-                  --name $CONTAINER_NAME \
-                  -p 80:5000 \
-                  --restart always \
-                  $PREVIOUS_IMAGE
+                docker run -d                   --name $CONTAINER_NAME                   -p 80:5000                   --restart always                   $PREVIOUS_IMAGE
               fi
 
               exit 1
