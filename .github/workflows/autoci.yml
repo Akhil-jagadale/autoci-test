@@ -1,4 +1,3 @@
-
 name: AutoCI Pipeline
 
 on:
@@ -21,8 +20,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set version
-        id: version
-        run: echo "VERSION=1775646090" >> $GITHUB_ENV
+        run: echo "VERSION=1775646302" >> $GITHUB_ENV
 
       - name: Login to DockerHub
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
@@ -58,22 +56,19 @@ jobs:
             NEW_CONTAINER=${{ env.NEW_CONTAINER }}
             VERSION=${{ env.VERSION }}
 
-            echo "Saving current running image (rollback point)"
             PREVIOUS_IMAGE=$(docker inspect $CONTAINER_NAME --format='{{.Config.Image}}' || true)
 
-            echo "Pull new version"
             docker pull $IMAGE_NAME:$VERSION
 
-            echo "Start new container (test)"
-            docker run -d               --name $NEW_CONTAINER               -p 8080:5000               --restart always               $IMAGE_NAME:$VERSION
+            docker run -d \
+              --name $NEW_CONTAINER \
+              -p 8080:5000 \
+              --restart always \
+              $IMAGE_NAME:$VERSION
 
-            echo "Waiting for startup"
             sleep 8
 
-            echo "Health check"
             if curl -f http://localhost:8080; then
-
-              echo "New container healthy — switching"
 
               docker stop $CONTAINER_NAME || true
               docker rm $CONTAINER_NAME || true
@@ -81,32 +76,31 @@ jobs:
               docker stop $NEW_CONTAINER
               docker rm $NEW_CONTAINER
 
-              docker run -d                 --name $CONTAINER_NAME                 -p 80:5000                 --restart always                 $IMAGE_NAME:$VERSION
+              docker run -d \
+                --name $CONTAINER_NAME \
+                -p 80:5000 \
+                --restart always \
+                $IMAGE_NAME:$VERSION
 
-              echo "Monitoring container for crash..."
               sleep 15
 
               RUNNING=$(docker inspect -f '{{.State.Running}}' $CONTAINER_NAME)
 
               if [ "$RUNNING" != "true" ]; then
-                echo "Container crashed — rolling back"
-
                 docker rm -f $CONTAINER_NAME || true
 
                 if [ ! -z "$PREVIOUS_IMAGE" ]; then
-                  docker run -d                     --name $CONTAINER_NAME                     -p 80:5000                     --restart always                     $PREVIOUS_IMAGE
-
-                  echo "Rollback after crash complete"
+                  docker run -d \
+                    --name $CONTAINER_NAME \
+                    -p 80:5000 \
+                    --restart always \
+                    $PREVIOUS_IMAGE
                 fi
 
                 exit 1
               fi
 
-              echo "Deployment successful and stable"
-
             else
-
-              echo "Deployment failed — rolling back"
 
               docker stop $NEW_CONTAINER || true
               docker rm $NEW_CONTAINER || true
@@ -115,11 +109,14 @@ jobs:
                 docker stop $CONTAINER_NAME || true
                 docker rm $CONTAINER_NAME || true
 
-                docker run -d                   --name $CONTAINER_NAME                   -p 80:5000                   --restart always                   $PREVIOUS_IMAGE
+                docker run -d \
+                  --name $CONTAINER_NAME \
+                  -p 80:5000 \
+                  --restart always \
+                  $PREVIOUS_IMAGE
               fi
 
               exit 1
             fi
 
-            echo "Running containers"
             docker ps
