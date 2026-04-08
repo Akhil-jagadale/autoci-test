@@ -8,6 +8,7 @@ on:
 env:
   IMAGE_NAME: akhileshj/autoci-app
   CONTAINER_NAME: autoci-app
+  NEW_CONTAINER: autoci-app-new
 
 jobs:
   build-test-push-deploy:
@@ -41,7 +42,7 @@ jobs:
           docker push $IMAGE_NAME:$VERSION
           docker push $IMAGE_NAME:latest
 
-      - name: Deploy to EC2
+      - name: Deploy to EC2 (Safe + Rollback)
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -52,46 +53,66 @@ jobs:
 
             IMAGE_NAME=${{ env.IMAGE_NAME }}
             CONTAINER_NAME=${{ env.CONTAINER_NAME }}
+            NEW_CONTAINER=${{ env.NEW_CONTAINER }}
+            VERSION=${{ env.VERSION }}
 
-            echo "Pull latest image"
-            docker pull $IMAGE_NAME:latest
+            echo "Saving current running image (rollback point)"
+            PREVIOUS_IMAGE=$(docker inspect $CONTAINER_NAME --format='{{.Config.Image}}' || true)
 
-            echo "Stop old container"
-            docker stop $CONTAINER_NAME || true
-            docker rm $CONTAINER_NAME || true
+            echo "Pull new version"
+            docker pull $IMAGE_NAME:$VERSION
 
-            echo "Cleanup"
-            docker container prune -f || true
-
-            echo "Run new container"
+            echo "Start new container (test)"
             docker run -d \
-              --name $CONTAINER_NAME \
-              -p 80:5000 \
+              --name $NEW_CONTAINER \
+              -p 8080:5000 \
               --restart always \
-              $IMAGE_NAME:latest
+              $IMAGE_NAME:$VERSION
+
+            echo "Waiting for startup"
+            sleep 8
+
+            echo "Health check"
+            if curl -f http://localhost:8080; then
+
+              echo "New container healthy — switching"
+
+              docker stop $CONTAINER_NAME || true
+              docker rm $CONTAINER_NAME || true
+
+              docker stop $NEW_CONTAINER
+              docker rm $NEW_CONTAINER
+
+              docker run -d \
+                --name $CONTAINER_NAME \
+                -p 80:5000 \
+                --restart always \
+                $IMAGE_NAME:$VERSION
+
+              echo "Deployment successful"
+
+            else
+
+              echo "Deployment failed — rolling back"
+
+              docker stop $NEW_CONTAINER || true
+              docker rm $NEW_CONTAINER || true
+
+              if [ ! -z "$PREVIOUS_IMAGE" ]; then
+                echo "Restoring previous version: $PREVIOUS_IMAGE"
+
+                docker stop $CONTAINER_NAME || true
+                docker rm $CONTAINER_NAME || true
+
+                docker run -d \
+                  --name $CONTAINER_NAME \
+                  -p 80:5000 \
+                  --restart always \
+                  $PREVIOUS_IMAGE
+              fi
+
+              exit 1
+            fi
 
             echo "Running containers"
             docker ps
-
-      - name: Rollback deployment
-        if: failure()
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_KEY }}
-          script: |
-            IMAGE_NAME=${{ env.IMAGE_NAME }}
-            CONTAINER_NAME=${{ env.CONTAINER_NAME }}
-
-            echo "Rollback to previous"
-            docker pull $IMAGE_NAME:latest
-
-            docker stop $CONTAINER_NAME || true
-            docker rm $CONTAINER_NAME || true
-
-            docker run -d \
-              --name $CONTAINER_NAME \
-              -p 80:5000 \
-              --restart always \
-              $IMAGE_NAME:latest
